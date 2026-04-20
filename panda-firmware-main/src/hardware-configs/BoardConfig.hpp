@@ -21,6 +21,7 @@ static constexpr bool DEBUG_PACKET = false;
 
 static constexpr char S_IDENTIFIER = 's';
 static constexpr char LCTC_IDENTIFIER = 't';
+static constexpr char PT_IDENTIFIER = 'p'; // PT CSV id (forwarded from V2)
 
 static constexpr unsigned int SERIAL_BAUD_RATE = 460800; // Originally 115200
 static constexpr unsigned int SERIAL_TIMEOUT = 2000;
@@ -54,3 +55,25 @@ static constexpr float tcOffsets[NUM_TC_CHANNELS] = {
     -0.06998,
     -0.07754
 };
+
+// =================== Bang-Bang configuration =================== //
+// Bang-bang runs on V1 (DC channels functional here) using PT readings
+// forwarded from V2 over the secondary RS-485 crossover.
+
+// PT indices into the V2-forwarded ptData[] array (0-indexed).
+static constexpr uint8_t BB_LOX_PT_CH  = 0;
+static constexpr uint8_t BB_FUEL_PT_CH = 1;
+
+// DC solenoid channels (1-indexed; maps to SequenceHandler::channelArr[ch-1]).
+static constexpr uint8_t BB_LOX_DC_CH  = 4;
+static constexpr uint8_t BB_FUEL_DC_CH = 7;
+
+// Sanity bounds — BB disables if PT reading falls outside this range.
+static constexpr float BB_PRESSURE_MIN_PSI = -50.0f;
+static constexpr float BB_PRESSURE_MAX_PSI = 4000.0f;
+
+// EEPROM layout for BB config persistence.
+static constexpr uint16_t BB_EEPROM_MAGIC = 0xBB42;
+static constexpr int      BB_EEPROM_ADDR  = 0;
+
+static constexpr uint8_t NUM_ACTUATORS = NUM_DC_CHANNELS;

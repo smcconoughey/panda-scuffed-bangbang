@@ -5,7 +5,7 @@
 #include "hardware-configs/BoardConfig.hpp"
 
 class ArmingController {
-    
+
     private:
 
     uint8_t armPin, disarmPin;
