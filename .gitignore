@@ -1,0 +1,4 @@
+# PandaV2Firmware is its own git repo with its own remote:
+#   https://github.com/smcconoughey/PandaV2Firmware.git
+# It lives alongside this repo for convenience but is versioned separately.
+PandaV2Firmware/
