@@ -14,8 +14,11 @@ struct ADCPins {
  };
 
 // UART pin reference (Teensy 4.1):
-//   Serial2 (primary RS-485 → GC)        : pins 7 (RX), 8 (TX)
-//   Serial5 (secondary RS-485 → V2 xover): pins 21 (RX), 20 (TX)
+//   Serial2 (primary RS-485 → GC)      : pins 7 (RX), 8 (TX)
+//   Serial5 (direct TTL xover ← V2)    : pins 21 (RX), 20 (TX)
+//                                        (RS-485 transceiver bypassed on
+//                                         this bus; V1 pin 20 → V2 pin 25,
+//                                         V2 pin 24 → V1 pin 21, GND↔GND)
 static constexpr uint8_t UART1Pins[2] = {8, 7};
 static constexpr uint8_t UART2Pins[2] = {20, 21};
 

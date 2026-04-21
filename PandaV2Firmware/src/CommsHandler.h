@@ -2,13 +2,15 @@
 #include <Arduino.h>
 #include "BoardConfig.h"
 
-// RS-485 half-duplex communication handler with DE pin control.
-// Receives line-delimited packets, transmits with automatic DE assertion.
-// Adds XOR checksum to outgoing telemetry for noise resilience.
+// UART communication handler. Works in two modes:
+//   - RS-485 half-duplex: dePin = GPIO → asserted HIGH around each TX.
+//   - Plain TTL UART:     dePin = 0xFF (default) → no DE toggling, no flush.
+// Receives line-delimited packets. The TTL mode is used for the V1↔V2
+// crossover (no transceiver); RS-485 mode is used for the primary GC link.
 
 class CommsHandler {
 public:
-    CommsHandler(HardwareSerialIMXRT& port, uint8_t dePin, size_t rxBufSize = RS485_RX_BUF);
+    CommsHandler(HardwareSerialIMXRT& port, uint8_t dePin = 0xFF, size_t rxBufSize = RS485_RX_BUF);
 
     void begin(uint32_t baud = RS485_BAUD);
     void poll();

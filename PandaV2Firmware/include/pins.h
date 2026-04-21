@@ -38,23 +38,24 @@
 #define INA230_ADDR_U12  0x44  // A1=3V3, A0=GND
 
 // ---------------------------------------------------------------------------
-// UART — RS-485 transceivers (ISL83491, U32)
-// /RE is hardwired to GND (receiver always enabled).
-// DE is tied to +3V3 (driver always enabled).
-// This makes the link full-duplex capable on each bus but always driving,
-// so it's point-to-point only (no multi-drop bus sharing).
-// DI connects to Teensy TX; RO connects to Teensy RX.
+// UART links
+//
+// PRIMARY (GC ↔ V2): RS-485 over the ISL83491 transceiver (U32, bus 1).
+//   /RE tied to GND, DE tied to +3V3 → point-to-point, always driving.
+//   No GPIO DE control; firmware passes 0xFF to CommsHandler.
+//
+// SECONDARY (V1 ↔ V2 crossover): direct TTL UART, no transceiver.
+//   Bus-2 RS-485 transceiver has been bypassed — Teensy TX/RX are wired
+//   straight to V1's Serial5 TX/RX with a common GND. No DE handling, no
+//   differential driver. Point-to-point only, short-run only.
 // ---------------------------------------------------------------------------
 #define PIN_RS485_1_RX  28   // Serial7 RX
 #define PIN_RS485_1_TX  29   // Serial7 TX
-#define PIN_RS485_2_RX  25   // Serial6 RX
-#define PIN_RS485_2_TX  24   // Serial6 TX
+#define PIN_XOVER_RX    25   // Serial6 RX → V1 pin 20 (TX)
+#define PIN_XOVER_TX    24   // Serial6 TX → V1 pin 21 (RX)
 
-// DE is tied to +3V3 on both transceivers (driver always enabled).
-// No GPIO control needed — the bus is always driven.
-// This is safe for point-to-point links but precludes multi-drop RS-485.
-#define PIN_RS485_1_DE  0xFF  // not GPIO-controlled
-#define PIN_RS485_2_DE  0xFF  // not GPIO-controlled
+// Primary RS-485 DE pin — 0xFF means "no GPIO control"; DE is wired high.
+#define PIN_RS485_1_DE  0xFF
 
 // ---------------------------------------------------------------------------
 // Analog mux channel select — CD74HCT4067 x3 (U21, U24, U36)

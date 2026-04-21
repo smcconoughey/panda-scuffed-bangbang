@@ -25,15 +25,17 @@ INA230 pmon2(Wire, INA230_ADDR_U12);
 
 static bool pmonOk[3] = {false, false, false};
 
-// RS-485 comms.
-//   comms  (Serial7, bus 1) → primary link to ground control.
-//   comms2 (Serial6, bus 2) → dedicated crossover to Panda V1.
+// UART comms.
+//   comms  (Serial7, bus 1) → RS-485 primary link to ground control.
+//   comms2 (Serial6, xover) → direct TTL crossover to Panda V1 Serial5.
+//                             RS-485 transceiver has been bypassed on this
+//                             bus (broken in hardware). No DE control.
 //                             Only forwards PT telemetry; does not accept
 //                             commands and does not carry other telemetry.
 //                             V1 runs the bang-bang loop and drives the DC
 //                             channels (V2 DC outputs are broken in hardware).
 CommsHandler comms(Serial7, PIN_RS485_1_DE);
-CommsHandler comms2(Serial6, PIN_RS485_2_DE);
+CommsHandler comms2(Serial6);                     // plain TTL, no DE pin
 
 ArmingController arming(PIN_ARM, PIN_DISARM);
 SequenceHandler seq;

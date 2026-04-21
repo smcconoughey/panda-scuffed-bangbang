@@ -60,20 +60,44 @@ static constexpr float tcOffsets[NUM_TC_CHANNELS] = {
 // Bang-bang runs on V1 (DC channels functional here) using PT readings
 // forwarded from V2 over the secondary RS-485 crossover.
 
+// Sentinel values for unset hardware channels.
+static constexpr uint8_t BB_DC_CH_UNSET = 0;     // DC channels are 1-indexed
+static constexpr uint8_t BB_PT_CH_UNSET = 0xFF;  // PT channels are 0-indexed
+
 // PT indices into the V2-forwarded ptData[] array (0-indexed).
 static constexpr uint8_t BB_LOX_PT_CH  = 0;
 static constexpr uint8_t BB_FUEL_PT_CH = 1;
 
-// DC solenoid channels (1-indexed; maps to SequenceHandler::channelArr[ch-1]).
+// DC press-solenoid channels (1-indexed; maps to SequenceHandler::channelArr[ch-1]).
 static constexpr uint8_t BB_LOX_DC_CH  = 4;
 static constexpr uint8_t BB_FUEL_DC_CH = 7;
+
+// DC vent-solenoid channels (1-indexed). Set to BB_DC_CH_UNSET to disable
+// auto-vent / abort for that side; those commands will be rejected with
+// EVT:...:AV_NO_HW until a real channel is configured here.
+// TODO(user): set these to the actual vent DC channels on your board.
+static constexpr uint8_t BB_LOX_VENT_DC_CH  = BB_DC_CH_UNSET;
+static constexpr uint8_t BB_FUEL_VENT_DC_CH = BB_DC_CH_UNSET;
+
+// Venturi PT indices for mass-flow calculation (0-indexed into v2PtData[]).
+// BB_PT_CH_UNSET disables mass-flow correction for that side regardless of
+// the `mdot_enabled` config flag — no fake numbers will drive the loop.
+// TODO(user): set these once the additional 4 venturi PTs are installed on V2.
+static constexpr uint8_t BB_LOX_VENTURI_UP_PT  = BB_PT_CH_UNSET;
+static constexpr uint8_t BB_LOX_VENTURI_DN_PT  = BB_PT_CH_UNSET;
+static constexpr uint8_t BB_FUEL_VENTURI_UP_PT = BB_PT_CH_UNSET;
+static constexpr uint8_t BB_FUEL_VENTURI_DN_PT = BB_PT_CH_UNSET;
 
 // Sanity bounds — BB disables if PT reading falls outside this range.
 static constexpr float BB_PRESSURE_MIN_PSI = -50.0f;
 static constexpr float BB_PRESSURE_MAX_PSI = 4000.0f;
 
-// EEPROM layout for BB config persistence.
-static constexpr uint16_t BB_EEPROM_MAGIC = 0xBB42;
+// Mass-flow correction update cadence (ms between setpoint nudges).
+static constexpr uint32_t BB_MDOT_UPDATE_MS = 500;
+
+// EEPROM layout for BB config persistence. Magic bumped when BBConfig
+// struct layout changed; old EEPROM contents ignored on mismatch.
+static constexpr uint16_t BB_EEPROM_MAGIC = 0xBB43;
 static constexpr int      BB_EEPROM_ADDR  = 0;
 
 static constexpr uint8_t NUM_ACTUATORS = NUM_DC_CHANNELS;
