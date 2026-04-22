@@ -36,7 +36,8 @@
  *   'x<side>'                           Latched abort (cleared only by 'r')
  *
  * Telemetry (Serial2 → GC):
- *   'p<f0>,p<f1>,...'   — 16 PT pressures (PSI), converted on V1 from V2 signal
+ *   'p<f0>,p<f1>,...'   — 16 PT signal values forwarded from V2
+ *   'P<f0>,P<f1>,...'   — 16 PT pressures (PSI), scaled on V1 from p-values
  *   's<f0>,s<f1>,...'   — 12 solenoid current voltages (V1 local)
  *   't<f0>,t<f1>,...'   — 12 LC+TC voltages (V1 local)
  *   'BB:<L|F>:<state>:<press>:<vent>:<pressure>'   1 Hz summary heartbeat
@@ -56,8 +57,10 @@ ArmingController ac(PIN_ARM, PIN_DISARM);
 SScanner sScanner(sADCPins.cs, sADCPins.irq, SPI, SPISettingsDefault);
 FScanner fScanner(ptADCPins.cs, ptADCPins.irq, SPI1, SPISettingsDefault);
 
-// ── V2 PT data in PSI (filled by secondary-bus parser) ─────────────────────
+// ── V2-forwarded PT data (filled by secondary-bus parser) ─────────────────
 static float v2PtData[NUM_PT_CHANNELS] = {0};
+// Scaled PT view (PSI) derived from v2PtData[] for GC consumption.
+static float v2PtPsiData[NUM_PT_CHANNELS] = {0};
 
 // Mirror of master-arm state (what BB gates on).
 static bool gArmed = false;
@@ -94,8 +97,7 @@ static bool isBbOwned(uint8_t ch1) {
   return bbLox.ownsChannel(ch1) || bbFuel.ownsChannel(ch1);
 }
 
-static float ptSignalToPsi(float signalVolts) {
-  const float currentMa = (signalVolts / PT_SHUNT_OHMS) * 1000.0f;
+static float ptMilliampToPsi(float currentMa) {
   return (currentMa - PT_ZERO_MA) * (PT_FULL_SCALE_PSI / PT_SPAN_MA);
 }
 
@@ -108,8 +110,10 @@ static void parseV2PtPacket(char *packet) {
   char *tok = strtok(packet, ",");
   while (tok && idx < NUM_PT_CHANNELS) {
     const char *num = (tok[0] == PT_IDENTIFIER) ? tok + 1 : tok;
-    const float signalVolts = atof(num);
-    v2PtData[idx++] = ptSignalToPsi(signalVolts);
+    const float ptMa = atof(num);
+    v2PtData[idx] = ptMa;
+    v2PtPsiData[idx] = ptMilliampToPsi(ptMa);
+    idx++;
     tok = strtok(nullptr, ",");
   }
 }
@@ -518,11 +522,13 @@ void loop() {
   sScanner.getSOutput(sData);
   fScanner.getLCTCOutput(lctcData);
 
-  char sPacket[512], lctcPacket[512], ptPacket[512];
+  char sPacket[512], lctcPacket[512], ptPacket[512], ptPsiPacket[512];
   th.toCSVRow(sData, S_IDENTIFIER, NUM_DC_CHANNELS, sPacket, 512, 5);
   th.toCSVRow(lctcData, LCTC_IDENTIFIER, NUM_TC_CHANNELS + NUM_LC_CHANNELS,
               lctcPacket, 512, 5);
   th.toCSVRow(v2PtData, PT_IDENTIFIER, NUM_PT_CHANNELS, ptPacket, 512, 5);
+  th.toCSVRow(v2PtPsiData, PT_PSI_IDENTIFIER, NUM_PT_CHANNELS, ptPsiPacket, 512,
+              5);
 
   static uint32_t lastHexDiagMs = 0;
   const uint32_t now = millis();
@@ -536,6 +542,7 @@ void loop() {
   Serial2.print(lctcPacket);
   Serial2.print(sPacket);
   Serial2.print(ptPacket);
+  Serial2.print(ptPsiPacket);
 
   printBbHeartbeat(bbLox);
   printBbHeartbeat(bbFuel);

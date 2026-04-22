@@ -22,6 +22,7 @@ static constexpr bool DEBUG_PACKET = false;
 static constexpr char S_IDENTIFIER = 's';
 static constexpr char LCTC_IDENTIFIER = 't';
 static constexpr char PT_IDENTIFIER = 'p'; // PT CSV id (forwarded from V2)
+static constexpr char PT_PSI_IDENTIFIER = 'P'; // Scaled PT PSI row id (V1-derived)
 
 static constexpr unsigned int SERIAL_BAUD_RATE = 460800; // Originally 115200
 static constexpr unsigned int SERIAL_TIMEOUT = 2000;
@@ -46,11 +47,10 @@ static constexpr size_t TX_BUF_SIZE = 2048;
 static constexpr float tcConstant = 2217.294;
 static constexpr float tcOffset = 160;
 static constexpr float sConstant = 0.5;
-// V2 PT stream arrives as shunt voltage. Convert on V1: volts -> mA -> psi.
-static constexpr float PT_SHUNT_OHMS = 250.0f;           // 4-20 mA into 250 ohm = 1-5 V
+// PT scaling (mA -> psi), used for secondary scaled telemetry row.
 static constexpr float PT_ZERO_MA = 4.0f;
-static constexpr float PT_SPAN_MA = 16.0f;               // 20 - 4
-static constexpr float PT_FULL_SCALE_PSI = 1500.0f;      // PT rating
+static constexpr float PT_SPAN_MA = 16.0f;          // 20 - 4
+static constexpr float PT_FULL_SCALE_PSI = 1500.0f; // Sensor rating
 
 static constexpr float tcOffsets[NUM_TC_CHANNELS] = {
     -0.07429,
