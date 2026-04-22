@@ -359,6 +359,18 @@ void setup() {
 
 void loop() {
   char idChar;
+  static uint32_t lastTxInvWarnMs = 0;
+
+  // Keep TX inversion latched in case lower-level serial reconfiguration
+  // clears the bit after setup().
+  if ((LPUART4_CTRL & LPUART_CTRL_TXINV) == 0) {
+    LPUART4_CTRL |= LPUART_CTRL_TXINV;
+    const uint32_t now = millis();
+    if (now - lastTxInvWarnMs >= 1000UL) {
+      Serial.println("WARN: Re-applied LPUART4 TXINV");
+      lastTxInvWarnMs = now;
+    }
+  }
 
   // ── Secondary bus: drain PT forwards from V2 ────────────────────────
   thXover.poll();
