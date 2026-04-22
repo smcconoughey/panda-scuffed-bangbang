@@ -10,6 +10,8 @@ void TelemetryHandler::poll() {
         if (c == '\r' || c == '\n') {
             if (index > 0) {
                 rxBuf[index] = '\0';
+                lastPacketLen = index;
+                lastPacketHadDelimiter = true;
                 packetReady = true;
             }
             index = 0;
@@ -22,6 +24,8 @@ void TelemetryHandler::poll() {
 
         else {
             rxBuf[sizeof(rxBuf) - 1] = '\0';
+            lastPacketLen = sizeof(rxBuf) - 1;
+            lastPacketHadDelimiter = false;
             packetReady = true;
             index = 0;
             break;
@@ -31,6 +35,8 @@ void TelemetryHandler::poll() {
     }
     if (!packetReady && index > 0 && timer > PACKET_IDLE_MS) {
         rxBuf[index] = '\0';
+        lastPacketLen = index;
+        lastPacketHadDelimiter = false;
         packetReady = true;
         index = 0;
     }

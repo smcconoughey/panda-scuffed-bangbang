@@ -307,11 +307,41 @@ static void printPacketHexBrief(const char *label, const char *packet,
   Serial.println();
 }
 
+static void printBytesHexBrief(const char *label, const uint8_t *data,
+                               size_t len) {
+  if (!data) {
+    return;
+  }
+
+  Serial.print("HEX ");
+  Serial.print(label);
+  Serial.print(" len=");
+  Serial.print(len);
+  Serial.print(" head=");
+
+  const size_t headCount = (len < 8) ? len : 8;
+  for (size_t i = 0; i < headCount; i++) {
+    if (i)
+      Serial.print(' ');
+    if (data[i] < 0x10)
+      Serial.print('0');
+    Serial.print(data[i], HEX);
+  }
+
+  Serial.print(" tail=");
+  const size_t tailCount = (len < 3) ? len : 3;
+  for (size_t i = len - tailCount; i < len; i++) {
+    if (i != len - tailCount)
+      Serial.print(' ');
+    if (data[i] < 0x10)
+      Serial.print('0');
+    Serial.print(data[i], HEX);
+  }
+  Serial.println();
+}
+
 void setup() {
   // Primary RS-485 (GC) — Serial2 = LPUART4, pins 7(RX)/8(TX).
-  // TX differential pair (Y/Z) is swapped on the V1 PCB, same as V2.
-  // TXINV corrects polarity so the GC sees valid UART. RXINV stays off —
-  // RX pair (A/B) is correct. TODO: fix Y/Z routing in next board revision.
   Serial2.begin(SERIAL_BAUD_RATE);
   Serial2.setTimeout(100);
   static uint8_t rxBuf[RX_BUF_SIZE];
@@ -363,6 +393,17 @@ void loop() {
   thXover.poll();
   if (thXover.isPacketReady()) {
     char *xPacket = thXover.takePacket();
+    static uint32_t lastXoverDiagMs = 0;
+    const uint32_t now = millis();
+    if (now - lastXoverDiagMs >= 1000UL) {
+      const size_t xLen = thXover.getLastPacketLen();
+      Serial.print("XOVER delim=");
+      Serial.print(thXover.didLastPacketEndWithDelimiter() ? 1 : 0);
+      Serial.print(' ');
+      printBytesHexBrief("XOVER",
+                         reinterpret_cast<const uint8_t *>(xPacket), xLen);
+      lastXoverDiagMs = now;
+    }
     if (xPacket[0] == PT_IDENTIFIER) {
       parseV2PtPacket(xPacket);
     }

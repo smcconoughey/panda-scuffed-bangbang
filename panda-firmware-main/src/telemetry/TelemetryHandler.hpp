@@ -11,6 +11,8 @@ class TelemetryHandler {
 
     size_t rxBufSize;
     size_t index = 0;
+    size_t lastPacketLen = 0;
+    bool lastPacketHadDelimiter = false;
 
     bool packetReady = false; // Packet ready flag
 
@@ -25,6 +27,8 @@ class TelemetryHandler {
     void poll();
     bool isPacketReady();
     char* takePacket();
+    size_t getLastPacketLen() const { return lastPacketLen; }
+    bool didLastPacketEndWithDelimiter() const { return lastPacketHadDelimiter; }
     void reset();
 
     // quality of life functions
