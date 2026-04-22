@@ -5,7 +5,9 @@
       "Bash(git commit -m ' *)",
       "Bash(which pio *)",
       "Bash(ls ~/.platformio/penv/bin/pio)",
-      "Bash(/Users/seanm/Library/Python/3.9/bin/platformio run *)"
+      "Bash(/Users/seanm/Library/Python/3.9/bin/platformio run *)",
+      "Bash(pio run *)",
+      "Bash(/Users/seanm/Library/Python/3.9/bin/pio run *)"
     ]
   }
 }

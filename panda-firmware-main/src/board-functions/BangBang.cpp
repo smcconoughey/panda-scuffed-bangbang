@@ -77,15 +77,17 @@ void BBController::configureVent(float triggerPsi, bool autoVentEnabled) {
     _emitSafe("CFG_PUSH", buf);
 }
 
-void BBController::configureMdot(float mdotTarget, float spMin, float spMax, float gain, bool enabled) {
+void BBController::configureMdot(float mdotTarget, float spMin, float spMax,
+                                 float gain, float densityKgm3, bool enabled) {
     _cfg.mdot_target  = mdotTarget;
     _cfg.sp_min       = spMin;
     _cfg.sp_max       = spMax;
     _cfg.mdot_gain    = gain;
+    _cfg.density_kgm3 = densityKgm3;
     _cfg.mdot_enabled = enabled;
-    char buf[96];
-    snprintf(buf, sizeof(buf), "mdot=%.3f,spMin=%.1f,spMax=%.1f,gain=%.4f,on=%d",
-             mdotTarget, spMin, spMax, gain, enabled ? 1 : 0);
+    char buf[112];
+    snprintf(buf, sizeof(buf), "mdot=%.3f,spMin=%.1f,spMax=%.1f,gain=%.4f,rho=%.1f,on=%d",
+             mdotTarget, spMin, spMax, gain, densityKgm3, enabled ? 1 : 0);
     _emitSafe("CFG_PUSH", buf);
 }
 
@@ -294,21 +296,19 @@ void BBController::_updateAbort() {
 // ── Mass-flow correction ──────────────────────────────────────────────────
 
 float BBController::_computeMdot() {
-    // Venturi mass flow proxy:
-    //   m_dot ∝ sqrt(max(0, P_up - P_dn))
-    //
-    // GC's mdot_target / mdot_gain are interpreted in the same proxy units.
-    // Once real calibration (discharge coefficient, throat area, density) is
-    // available, replace this with the full Bernoulli form and update the
-    // users guide accordingly. Keeping it proxy-based means a miscalibrated
-    // setup nudges in the right direction without fabricating a false "real"
-    // flow number.
+    // Incompressible Bernoulli venturi:
+    //   m_dot [kg/s] = CdA · sqrt( 2 · ρ · ΔP )
+    // CdA is a single board constant (BB_VENTURI_CDA_M2). Density is per-side
+    // so LOX vs Fuel can be distinguished. Requires both venturi PTs wired
+    // and density > 0 — otherwise returns NaN and the caller skips adjustment.
     if (!hasVenturiHw()) return NAN;
-    float pUp = _ptArray[_vUp];
-    float pDn = _ptArray[_vDn];
-    float dp  = pUp - pDn;
-    if (dp < 0.0f) dp = 0.0f;
-    return sqrtf(dp);
+    if (_cfg.density_kgm3 <= 0.0f) return NAN;
+    float pUp  = _ptArray[_vUp];
+    float pDn  = _ptArray[_vDn];
+    float dPsi = pUp - pDn;
+    if (dPsi < 0.0f) dPsi = 0.0f;
+    float dPa  = dPsi * PSI_TO_PA;
+    return BB_VENTURI_CDA_M2 * sqrtf(2.0f * _cfg.density_kgm3 * dPa);
 }
 
 void BBController::_updateMdot() {
@@ -361,13 +361,13 @@ void bbLoadEeprom(BBController& lox, BBController& fuel) {
                       block.lox.wait_ms, block.lox.max_open_ms);
     lox.configureVent(block.lox.autovent_trigger, block.lox.autovent_enabled);
     lox.configureMdot(block.lox.mdot_target, block.lox.sp_min, block.lox.sp_max,
-                      block.lox.mdot_gain, block.lox.mdot_enabled);
+                      block.lox.mdot_gain, block.lox.density_kgm3, block.lox.mdot_enabled);
 
     fuel.configureCore(block.fuel.setpoint_psi, block.fuel.deadband_psi,
                        block.fuel.wait_ms, block.fuel.max_open_ms);
     fuel.configureVent(block.fuel.autovent_trigger, block.fuel.autovent_enabled);
     fuel.configureMdot(block.fuel.mdot_target, block.fuel.sp_min, block.fuel.sp_max,
-                       block.fuel.mdot_gain, block.fuel.mdot_enabled);
+                       block.fuel.mdot_gain, block.fuel.density_kgm3, block.fuel.mdot_enabled);
 }
 
 void bbSaveEeprom(const BBController& lox, const BBController& fuel) {

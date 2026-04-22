@@ -95,9 +95,19 @@ static constexpr float BB_PRESSURE_MAX_PSI = 4000.0f;
 // Mass-flow correction update cadence (ms between setpoint nudges).
 static constexpr uint32_t BB_MDOT_UPDATE_MS = 500;
 
+// Venturi CdA (discharge coefficient × effective throat area) in m².
+// Single value covers both LOX and Fuel venturis — update here if they
+// are ever sized differently. With this form of the mass-flow equation
+// upstream/throat areas are not used separately.
+//
+//   m_dot [kg/s] = CdA · sqrt( 2 · ρ · ΔP )
+//   ΔP [Pa]      = (P_up − P_dn) [psi] · PSI_TO_PA
+static constexpr float BB_VENTURI_CDA_M2 = 3.22e-5f;
+static constexpr float PSI_TO_PA         = 6894.757f;
+
 // EEPROM layout for BB config persistence. Magic bumped when BBConfig
 // struct layout changed; old EEPROM contents ignored on mismatch.
-static constexpr uint16_t BB_EEPROM_MAGIC = 0xBB43;
+static constexpr uint16_t BB_EEPROM_MAGIC = 0xBB44;
 static constexpr int      BB_EEPROM_ADDR  = 0;
 
 static constexpr uint8_t NUM_ACTUATORS = NUM_DC_CHANNELS;

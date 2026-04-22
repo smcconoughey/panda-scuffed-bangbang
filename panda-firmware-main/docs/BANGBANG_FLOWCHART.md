@@ -94,9 +94,9 @@ flowchart TD
     L5 --> M
     N2 --> M
 
-    M --> M1{mdot_enabled &&<br/>hasVenturiHw &&<br/>state == SUSTAIN &&<br/>mdotTimer >= 500ms?}
+    M --> M1{mdot_enabled &&<br/>hasVenturiHw &&<br/>density_kgm3 > 0 &&<br/>state == SUSTAIN &&<br/>mdotTimer >= 500ms?}
     M1 -- no --> Z3[done]
-    M1 -- yes --> M2[mdot = sqrt of Pup-Pdn<br/>err = target - mdot<br/>newSp = sp + gain*err<br/>clamp to sp_min..sp_max]
+    M1 -- yes --> M2[dP = max 0, Pup-Pdn then psi→Pa<br/>mdot = CdA · √ 2·ρ·dP<br/>err = target - mdot<br/>newSp = sp + gain·err<br/>clamp to sp_min..sp_max]
     M2 --> M3{newSp != sp?}
     M3 -- yes --> M4[sp = newSp<br/>emit MDOT_ADJ<br/>or MDOT_CLAMP]
     M3 -- no --> Z3
@@ -124,7 +124,7 @@ flowchart TD
 |---|---|---|---|
 | `B<side><sp>,<db>,<wait>,<maxOpen>` | `handleB` | `configureCore()` + `bbSaveEeprom()` | Any state |
 | `V<side><trig>,<autoOn>` | `handleV` | `configureVent()` + `bbSaveEeprom()` | Any state |
-| `M<side><mdot>,<spMin>,<spMax>,<gain>,<on>` | `handleM` | `configureMdot()` + `bbSaveEeprom()` | Any state |
+| `M<side><mdot>,<spMin>,<spMax>,<gain>,<rho>,<on>` | `handleM` | `configureMdot()` + `bbSaveEeprom()` | Any state |
 | `b<side>1` | `handleLowerB` | `enableSustain()` | `DISABLED` and `gArmed` |
 | `b<side>0` | `handleLowerB` | `disableSustain()` | Any except `ABORT` |
 | `v<side>1` | `handleLowerV` | `manualVent()` | Any except `ABORT`, requires `gArmed` + `hasVentHw` |
@@ -159,6 +159,6 @@ Every row of this table is a line of code. If you add a new state edge, you add 
 
 ## 6. What's intentionally out of scope (phase 2)
 
-- **Venturi calibration.** `_computeMdot()` returns a proxy `sqrt(P_up − P_dn)` — it will trend correctly but is not a calibrated mass flow. Replace with full Bernoulli form once throat area / discharge coefficient / density are known.
+- **Venturi calibration.** `_computeMdot()` uses the incompressible Bernoulli form `m_dot = CdA · √(2·ρ·ΔP)`, with CdA = `BB_VENTURI_CDA_M2` (single board constant, currently 3.22e-5 m²) and per-side `density_kgm3` supplied via the `M` command. ΔP is `P_up − P_dn` clamped ≥ 0, converted psi → Pa. Throat/upstream areas are absorbed into CdA; update the constant if the venturi geometry changes.
 - **Secondary-link staleness detector.** `v2PtData[]` is not timestamped. If the V2 crossover drops, BB keeps acting on stale data. Add a last-packet-millis watchdog before using this in anger.
 - **AUTO_VENT → SUSTAIN auto-recovery.** Current behavior drops to `DISABLED` on `AV_EXIT` by design — requires explicit operator re-enable. Change only after an explicit ops decision.

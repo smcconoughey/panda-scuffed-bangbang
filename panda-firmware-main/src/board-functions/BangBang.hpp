@@ -46,10 +46,11 @@ struct BBConfig {
     bool     autovent_enabled  = false;     // when false, auto-trigger is ignored (manual still works)
 
     // Mass-flow correction (only active if venturi PTs are wired AND enabled)
-    float    mdot_target       = 0.0f;    // target mass flow (user-defined units)
-    float    sp_min            = 0.0f;    // setpoint lower bound during correction
-    float    sp_max            = 0.0f;    // setpoint upper bound during correction
-    float    mdot_gain         = 0.0f;    // psi per (mdot-error unit) per update
+    float    mdot_target       = 0.0f;    // target mass flow [kg/s]
+    float    sp_min            = 0.0f;    // setpoint lower bound during correction [psi]
+    float    sp_max            = 0.0f;    // setpoint upper bound during correction [psi]
+    float    mdot_gain         = 0.0f;    // psi per (kg/s error) per update tick
+    float    density_kgm3      = 0.0f;    // propellant density for venturi calc; <=0 disables
     bool     mdot_enabled      = false;
 };
 
@@ -101,7 +102,8 @@ public:
     // Per-side config mutators. All emit EVT:CFG_PUSH on success.
     void configureCore(float setpoint, float deadband, uint32_t waitMs, uint32_t maxOpenMs);
     void configureVent(float triggerPsi, bool autoVentEnabled);
-    void configureMdot(float mdotTarget, float spMin, float spMax, float gain, bool enabled);
+    void configureMdot(float mdotTarget, float spMin, float spMax,
+                       float gain, float densityKgm3, bool enabled);
 
     // Enter SUSTAIN (bang-bang control). Caller must have verified armed.
     // Rejected if already non-DISABLED. Emits BB_ON / OWN_CONFLICT.

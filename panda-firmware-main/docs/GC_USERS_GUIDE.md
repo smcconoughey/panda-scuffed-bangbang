@@ -45,7 +45,7 @@ All three take effect immediately on the running controller and are saved to EEP
 |---|---|
 | `B<side><sp>,<db>,<wait>,<maxOpen>` | setpoint psi, symmetric deadband psi (>0), valve-transition debounce ms (≤60000), slow-press max-open ms (≤60000; 0 = disabled) |
 | `V<side><trig>,<autoOn01>` | auto-vent trigger psi, auto-vent enable flag (0/1) |
-| `M<side><mdot>,<spMin>,<spMax>,<gain>,<on01>` | mass-flow target (venturi proxy units), setpoint low/high bounds, gain (psi per mdot-error unit per 500 ms tick), enable flag (0/1) |
+| `M<side><mdot>,<spMin>,<spMax>,<gain>,<rho>,<on01>` | mass-flow target [kg/s], setpoint low/high bounds [psi], gain [psi per (kg/s error) per 500 ms tick], propellant density [kg/m³; ≤0 disables computation even if `on01=1`], enable flag (0/1) |
 
 Each emits `EVT:<ms>:CFG_PUSH:<side>:<k=v,...>` and rewrites the EEPROM block.
 
@@ -163,6 +163,7 @@ The operator must issue `a` to arm and `b<side>1` to start bang-bang.
 - **Every BB state change emits an `EVT:`** — GC should log this stream and surface the latest line next to the live state.
 - **`ABORT` can only be cleared by disarm.** There is no "unabort" command.
 - **Sanity-bound violation auto-latches `ABORT`.** The PT read is taken once per tick at the top of `update()`, so a single bad sample is enough.
-- **Mass-flow correction only moves the setpoint during `SUSTAIN`** and only if venturi PTs are wired. It never overrides `sp_min`/`sp_max`.
+- **Mass-flow correction only moves the setpoint during `SUSTAIN`** and only if venturi PTs are wired **and** `density_kgm3 > 0`. It never overrides `sp_min`/`sp_max`.
+- **Mass-flow formula**: `m_dot [kg/s] = CdA · √(2 · ρ · ΔP)` with `CdA = BB_VENTURI_CDA_M2` (board constant, currently 3.22e-5 m²), `ρ` = per-side `density_kgm3` from the `M` command, `ΔP = max(0, P_up − P_dn)` converted psi → Pa. Upstream/throat areas are not used separately — they're absorbed into CdA.
 - **Manual vent close (`v…0`) refuses to close if pressure is still above deadband-high.** Disarm is the forcing function.
 - **Disarm always wins.** It runs `forceSafe()` on both sides unconditionally.

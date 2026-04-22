@@ -147,13 +147,13 @@ static void handleM(const char* pkt) {   // massflow config
     if (strlen(pkt) < 4) { Serial2.println("BB_ERROR:short"); return; }
     BBController* ctrl = pickSide(pkt[1]);
     if (!ctrl)          { Serial2.println("BB_ERROR:bad_side"); return; }
-    float mdot, spMin, spMax, gain; int on;
-    if (sscanf(pkt + 2, "%f,%f,%f,%f,%d", &mdot, &spMin, &spMax, &gain, &on) != 5 ||
-        (on != 0 && on != 1) || spMin > spMax) {
+    float mdot, spMin, spMax, gain, rho; int on;
+    if (sscanf(pkt + 2, "%f,%f,%f,%f,%f,%d", &mdot, &spMin, &spMax, &gain, &rho, &on) != 6 ||
+        (on != 0 && on != 1) || spMin > spMax || rho < 0.0f) {
         Serial2.println("BB_ERROR:parse");
         return;
     }
-    ctrl->configureMdot(mdot, spMin, spMax, gain, on != 0);
+    ctrl->configureMdot(mdot, spMin, spMax, gain, rho, on != 0);
     bbSaveEeprom(bbLox, bbFuel);
 }
 
