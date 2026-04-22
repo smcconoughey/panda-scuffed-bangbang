@@ -30,7 +30,7 @@
  *   'f'                                 Fire loaded sequence
  *   'B<side><sp>,<db>,<wait>,<maxOpen>' Configure BB core (L or F)
  *   'V<side><trig>,<autoOn01>'          Configure BB auto-vent
- *   'M<side><mdot>,<spMin>,<spMax>,<gain>,<on01>'  Configure BB massflow
+ *   'M<side><mdot>,<spMin>,<spMax>,<gain>,<rho>,<on01>'  Configure BB massflow
  *   'b<side><0|1>'                      Arm/disarm bang-bang control
  *   'v<side><0|1>'                      Manual vent open(1) / close(0)
  *   'x<side>'                           Latched abort (cleared only by 'r')
@@ -308,7 +308,10 @@ static void printPacketHexBrief(const char *label, const char *packet,
 }
 
 void setup() {
-  // Primary RS-485 (GC)
+  // Primary RS-485 (GC) — Serial2 = LPUART4, pins 7(RX)/8(TX).
+  // TX differential pair (Y/Z) is swapped on the V1 PCB, same as V2.
+  // TXINV corrects polarity so the GC sees valid UART. RXINV stays off —
+  // RX pair (A/B) is correct. TODO: fix Y/Z routing in next board revision.
   Serial2.begin(SERIAL_BAUD_RATE);
   Serial2.setTimeout(100);
   static uint8_t rxBuf[RX_BUF_SIZE];
