@@ -36,7 +36,7 @@
  *   'x<side>'                           Latched abort (cleared only by 'r')
  *
  * Telemetry (Serial2 → GC):
- *   'p<f0>,p<f1>,...'   — 16 PT voltages, forwarded from V2
+ *   'p<f0>,p<f1>,...'   — 16 PT pressures (PSI), converted on V1 from V2 signal
  *   's<f0>,s<f1>,...'   — 12 solenoid current voltages (V1 local)
  *   't<f0>,t<f1>,...'   — 12 LC+TC voltages (V1 local)
  *   'BB:<L|F>:<state>:<press>:<vent>:<pressure>'   1 Hz summary heartbeat
@@ -56,7 +56,7 @@ ArmingController ac(PIN_ARM, PIN_DISARM);
 SScanner sScanner(sADCPins.cs, sADCPins.irq, SPI, SPISettingsDefault);
 FScanner fScanner(ptADCPins.cs, ptADCPins.irq, SPI1, SPISettingsDefault);
 
-// ── V2-forwarded PT data (filled by secondary-bus parser) ─────────────────
+// ── V2 PT data in PSI (filled by secondary-bus parser) ─────────────────────
 static float v2PtData[NUM_PT_CHANNELS] = {0};
 
 // Mirror of master-arm state (what BB gates on).
@@ -94,6 +94,11 @@ static bool isBbOwned(uint8_t ch1) {
   return bbLox.ownsChannel(ch1) || bbFuel.ownsChannel(ch1);
 }
 
+static float ptSignalToPsi(float signalVolts) {
+  const float currentMa = (signalVolts / PT_SHUNT_OHMS) * 1000.0f;
+  return (currentMa - PT_ZERO_MA) * (PT_FULL_SCALE_PSI / PT_SPAN_MA);
+}
+
 // ── Parse PT CSV from V2 into v2PtData[] ────────────────────────────────
 static void parseV2PtPacket(char *packet) {
   if (!packet || packet[0] == '\0')
@@ -103,7 +108,8 @@ static void parseV2PtPacket(char *packet) {
   char *tok = strtok(packet, ",");
   while (tok && idx < NUM_PT_CHANNELS) {
     const char *num = (tok[0] == PT_IDENTIFIER) ? tok + 1 : tok;
-    v2PtData[idx++] = atof(num);
+    const float signalVolts = atof(num);
+    v2PtData[idx++] = ptSignalToPsi(signalVolts);
     tok = strtok(nullptr, ",");
   }
 }

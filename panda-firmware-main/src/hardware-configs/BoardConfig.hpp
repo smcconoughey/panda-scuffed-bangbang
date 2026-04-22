@@ -46,6 +46,11 @@ static constexpr size_t TX_BUF_SIZE = 2048;
 static constexpr float tcConstant = 2217.294;
 static constexpr float tcOffset = 160;
 static constexpr float sConstant = 0.5;
+// V2 PT stream arrives as shunt voltage. Convert on V1: volts -> mA -> psi.
+static constexpr float PT_SHUNT_OHMS = 250.0f;           // 4-20 mA into 250 ohm = 1-5 V
+static constexpr float PT_ZERO_MA = 4.0f;
+static constexpr float PT_SPAN_MA = 16.0f;               // 20 - 4
+static constexpr float PT_FULL_SCALE_PSI = 1500.0f;      // PT rating
 
 static constexpr float tcOffsets[NUM_TC_CHANNELS] = {
     -0.07429,
