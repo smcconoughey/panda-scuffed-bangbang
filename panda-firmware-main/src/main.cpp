@@ -318,7 +318,6 @@ void setup() {
   Serial2.addMemoryForRead(rxBuf, RX_BUF_SIZE);
   static uint8_t txBuf[TX_BUF_SIZE];
   Serial2.addMemoryForWrite(txBuf, TX_BUF_SIZE);
-  LPUART4_CTRL |= LPUART_CTRL_TXINV;
 
   // Secondary crossover (direct TTL UART from V2 Serial6: V2 pin 24 → V1 pin
   // 21, V2 pin 25 ← V1 pin 20). RS-485 transceiver bypassed on this bus.
@@ -359,18 +358,6 @@ void setup() {
 
 void loop() {
   char idChar;
-  static uint32_t lastTxInvWarnMs = 0;
-
-  // Keep TX inversion latched in case lower-level serial reconfiguration
-  // clears the bit after setup().
-  if ((LPUART4_CTRL & LPUART_CTRL_TXINV) == 0) {
-    LPUART4_CTRL |= LPUART_CTRL_TXINV;
-    const uint32_t now = millis();
-    if (now - lastTxInvWarnMs >= 1000UL) {
-      Serial.println("WARN: Re-applied LPUART4 TXINV");
-      lastTxInvWarnMs = now;
-    }
-  }
 
   // ── Secondary bus: drain PT forwards from V2 ────────────────────────
   thXover.poll();
