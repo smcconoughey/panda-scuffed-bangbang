@@ -92,20 +92,22 @@ void FScanner::update() {
 
         if (index == 0 && channel >= 6) { // Load cell/TC conversions
           uint8_t tcChannel = channel - NUM_TC_CHANNELS;
-          Serial.print("TC Channel: ");
-          Serial.print(tcChannel);
           float rawVoltage = res - tcOffsets[tcChannel];
-
-          Serial.print(" | Raw voltage: ");
-          Serial.print(res,5);
-
-          Serial.print(" | Adjusted voltage: ");
-          Serial.print(rawVoltage,5);
-
           float reading = rawVoltage * tcConstant + boardTemp;
 
-          Serial.print(" | Temperature: ");
-          Serial.println(reading);
+          // USB CDC writes can wait up to 120 ms when an enumerated host stops
+          // draining them. Never put debug output in the control loop unless it
+          // was explicitly enabled at compile time.
+          if (DEBUG_F_ADC) {
+            Serial.print("TC Channel: ");
+            Serial.print(tcChannel);
+            Serial.print(" | Raw voltage: ");
+            Serial.print(res, 5);
+            Serial.print(" | Adjusted voltage: ");
+            Serial.print(rawVoltage, 5);
+            Serial.print(" | Temperature: ");
+            Serial.println(reading);
+          }
 
 
           settingsArr[index].out[channel] = reading;

@@ -61,6 +61,8 @@ FScanner fScanner(ptADCPins.cs, ptADCPins.irq, SPI1, SPISettingsDefault);
 static float v2PtData[NUM_PT_CHANNELS] = {0};
 // Scaled PT view (PSI) derived from v2PtData[] for GC consumption.
 static float v2PtPsiData[NUM_PT_CHANNELS] = {0};
+static uint32_t lastV2PtMs = 0;
+static bool hasValidV2Pt = false;
 
 // Mirror of master-arm state (what BB gates on).
 static bool gArmed = false;
@@ -103,21 +105,42 @@ static float ptMilliampToPsi(float currentMa) {
   return (currentMa - PT_ZERO_MA) * (PT_FULL_SCALE_PSI / PT_SPAN_MA);
 }
 
-// ── Parse PT CSV from V2 into v2PtData[] ────────────────────────────────
-static void parseV2PtPacket(char *packet) {
-  if (!packet || packet[0] == '\0')
-    return;
+static bool hasFreshV2Pt() {
+  return hasValidV2Pt && (millis() - lastV2PtMs <= BB_PT_STALE_MS);
+}
 
+// ── Parse PT CSV from V2 into v2PtData[] ────────────────────────────────
+// Parse into temporaries and commit only a complete, numeric 16-channel frame.
+// An idle-timeout fragment must not refresh the BB safety watchdog or mix new
+// leading channels with stale trailing channels.
+static bool parseV2PtPacket(char *packet) {
+  if (!packet || packet[0] == '\0')
+    return false;
+
+  float raw[NUM_PT_CHANNELS];
+  float psi[NUM_PT_CHANNELS];
   uint8_t idx = 0;
   char *tok = strtok(packet, ",");
   while (tok && idx < NUM_PT_CHANNELS) {
     const char *num = (tok[0] == PT_IDENTIFIER) ? tok + 1 : tok;
-    const float ptMa = atof(num);
-    v2PtData[idx] = ptMa;
-    v2PtPsiData[idx] = ptMilliampToPsi(ptMa);
+    char *end = nullptr;
+    const float ptMa = strtof(num, &end);
+    if (end == num || *end != '\0' || !isfinite(ptMa))
+      return false;
+    raw[idx] = ptMa;
+    psi[idx] = ptMilliampToPsi(ptMa);
     idx++;
     tok = strtok(nullptr, ",");
   }
+
+  if (idx != NUM_PT_CHANNELS || tok != nullptr)
+    return false;
+
+  memcpy(v2PtData, raw, sizeof(v2PtData));
+  memcpy(v2PtPsiData, psi, sizeof(v2PtPsiData));
+  lastV2PtMs = millis();
+  hasValidV2Pt = true;
+  return true;
 }
 
 // ── BB command dispatch ──────────────────────────────────────────────────
@@ -209,6 +232,10 @@ static void handleLowerB(const char *pkt) { // enable/disable sustain
   if (stCh == '1') {
     if (!gArmed) {
       Serial2.println("BB_ERROR:not_armed");
+      return;
+    }
+    if (!hasFreshV2Pt()) {
+      Serial2.println("BB_ERROR:pt_stale");
       return;
     }
     ctrl->enableSustain();
@@ -430,7 +457,7 @@ void loop() {
     char *xPacket = thXover.takePacket();
     static uint32_t lastXoverDiagMs = 0;
     const uint32_t now = millis();
-    if (now - lastXoverDiagMs >= 1000UL) {
+    if (DEBUG_PACKET && now - lastXoverDiagMs >= 1000UL) {
       const size_t xLen = thXover.getLastPacketLen();
       Serial.print("XOVER delim=");
       Serial.print(thXover.didLastPacketEndWithDelimiter() ? 1 : 0);
@@ -450,7 +477,8 @@ void loop() {
   th.poll();
   if (th.isPacketReady()) {
     char *rxPacket = th.takePacket();
-    Serial.println(rxPacket);
+    if (DEBUG_PACKET)
+      Serial.println(rxPacket);
     idChar = rxPacket[0];
 
     if (idChar == 's') {
@@ -535,6 +563,22 @@ void loop() {
   sh.update();
 
   // ── Bang-bang step ───────────────────────────────────────────────────
+  // Loss of the V2 crossover must not leave a valve controlled indefinitely
+  // from a stale pressure sample. A fresh frame does not auto-restart control;
+  // the operator must explicitly enable sustain again. ABORT remains latched:
+  // only an operator disarm may clear it, regardless of PT-link health.
+  if (!hasFreshV2Pt()) {
+    if (bbLox.state() == BBState::SUSTAIN ||
+        bbLox.state() == BBState::AUTO_VENT) {
+      bbEmit("PT_STALE", 'L', "V2 PT timeout; forcing safe");
+      bbLox.forceSafe();
+    }
+    if (bbFuel.state() == BBState::SUSTAIN ||
+        bbFuel.state() == BBState::AUTO_VENT) {
+      bbEmit("PT_STALE", 'F', "V2 PT timeout; forcing safe");
+      bbFuel.forceSafe();
+    }
+  }
   bbLox.update(gArmed);
   bbFuel.update(gArmed);
 
@@ -558,19 +602,21 @@ void loop() {
     fScanner.getLCTCOutput(lctcData);
 
     char sPacket[512], lctcPacket[512], ptPacket[512], ptPsiPacket[512];
-    th.toCSVRow(sData, S_IDENTIFIER, NUM_DC_CHANNELS, sPacket,
-                sizeof(sPacket), 5);
-    th.toCSVRow(lctcData, LCTC_IDENTIFIER,
-                NUM_TC_CHANNELS + NUM_LC_CHANNELS, lctcPacket,
-                sizeof(lctcPacket), 5);
-    th.toCSVRow(v2PtData, PT_IDENTIFIER, NUM_PT_CHANNELS, ptPacket,
-                sizeof(ptPacket), 5);
-    th.toCSVRow(v2PtPsiData, PT_PSI_IDENTIFIER, NUM_PT_CHANNELS, ptPsiPacket,
-                sizeof(ptPsiPacket), 5);
+    const bool frameValid =
+        th.toCSVRow(sData, S_IDENTIFIER, NUM_DC_CHANNELS, sPacket,
+                    sizeof(sPacket), 5) &&
+        th.toCSVRow(lctcData, LCTC_IDENTIFIER,
+                    NUM_TC_CHANNELS + NUM_LC_CHANNELS, lctcPacket,
+                    sizeof(lctcPacket), 5) &&
+        th.toCSVRow(v2PtData, PT_IDENTIFIER, NUM_PT_CHANNELS, ptPacket,
+                    sizeof(ptPacket), 5) &&
+        th.toCSVRow(v2PtPsiData, PT_PSI_IDENTIFIER, NUM_PT_CHANNELS,
+                    ptPsiPacket, sizeof(ptPsiPacket), 5);
 
-    tryWriteTelemetryFrame(lctcPacket, sPacket, ptPacket, ptPsiPacket);
+    if (frameValid)
+      tryWriteTelemetryFrame(lctcPacket, sPacket, ptPacket, ptPsiPacket);
 
-    if (now - lastHexDiagMs >= 1000UL) {
+    if (DEBUG_PACKET && frameValid && now - lastHexDiagMs >= 1000UL) {
       printPacketHexBrief("LCTC", lctcPacket, sizeof(lctcPacket));
       printPacketHexBrief("S", sPacket, sizeof(sPacket));
       printPacketHexBrief("PT", ptPacket, sizeof(ptPacket));

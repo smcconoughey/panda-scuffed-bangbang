@@ -160,5 +160,5 @@ Every row of this table is a line of code. If you add a new state edge, you add 
 ## 6. What's intentionally out of scope (phase 2)
 
 - **Venturi calibration.** `_computeMdot()` uses the incompressible Bernoulli form `m_dot = CdA · √(2·ρ·ΔP)`, with CdA = `BB_VENTURI_CDA_M2` (single board constant, currently 3.22e-5 m²) and per-side `density_kgm3` supplied via the `M` command. ΔP is `P_up − P_dn` clamped ≥ 0, converted psi → Pa. Throat/upstream areas are absorbed into CdA; update the constant if the venturi geometry changes.
-- **Secondary-link staleness detector.** `v2PtData[]` is not timestamped. If the V2 crossover drops, BB keeps acting on stale data. Add a last-packet-millis watchdog before using this in anger.
+- **Secondary-link staleness detector.** A complete numeric 16-channel V2 frame refreshes the watchdog. If it expires after 250 ms while BB is active, that controller force-safes, emits `PT_STALE`, and requires explicit operator re-enable.
 - **AUTO_VENT → SUSTAIN auto-recovery.** Current behavior drops to `DISABLED` on `AV_EXIT` by design — requires explicit operator re-enable. Change only after an explicit ops decision.

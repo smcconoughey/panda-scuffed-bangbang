@@ -102,6 +102,9 @@ static constexpr uint8_t BB_FUEL_VENTURI_DN_PT = BB_PT_CH_UNSET;
 // Sanity bounds — BB disables if PT reading falls outside this range.
 static constexpr float BB_PRESSURE_MIN_PSI = -50.0f;
 static constexpr float BB_PRESSURE_MAX_PSI = 4000.0f;
+// V2 sends PT data at 20 Hz. Five missed frames force any active BB controller
+// safe and require an explicit re-enable after valid data resumes.
+static constexpr uint32_t BB_PT_STALE_MS = 250;
 
 // Mass-flow correction update cadence (ms between setpoint nudges).
 static constexpr uint32_t BB_MDOT_UPDATE_MS = 500;

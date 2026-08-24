@@ -53,17 +53,26 @@ bool TelemetryHandler::isPacketReady() {
 }
 
 bool TelemetryHandler::toCSVRow(const float* data, char identifier, size_t n, char* out, size_t outSize, uint8_t decimals) {
-    size_t used = 0; 
+    if (!data || !out || outSize == 0) return false;
+    out[0] = '\0';
+    size_t used = 0;
 
     for (size_t i = 0; i < n ; ++i) {
         char digits[32];
-        digits[0] = identifier;                                // scratch for one number
-        dtostrf(data[i], 0, decimals, digits + 1);         // <-- write INTO digits
-        size_t len = strlen(digits);
+        const int written = snprintf(digits, sizeof(digits), "%c%.*f",
+                                     identifier, decimals, data[i]);
+        if (written < 0 || static_cast<size_t>(written) >= sizeof(digits)) {
+            out[used] = '\0';
+            return false;
+        }
+        const size_t len = static_cast<size_t>(written);
 
         // need = number chars + 1 delimiter (',' or '\n') + 1 final '\0' reserve
         size_t need = len + 1 + 1;
-        if (used + need > outSize) return false;        // prevent overflow
+        if (used + need > outSize) {
+            out[used] = '\0';
+            return false;
+        }
 
         memcpy(out + used, digits, len);                // append number
         used += len;

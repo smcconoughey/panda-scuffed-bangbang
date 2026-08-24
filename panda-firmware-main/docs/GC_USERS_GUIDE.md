@@ -107,6 +107,7 @@ This is the authoritative log for safety review. Categories:
 | `ABORT_ENTER` | Entered latched `ABORT`. |
 | `ABORT_CLEAR` | Latch cleared by disarm. |
 | `SANITY_FAIL` | PT reading out of `BB_PRESSURE_MIN_PSI..BB_PRESSURE_MAX_PSI` while armed. Auto-latches `ABORT`. |
+| `PT_STALE` | No complete V2 PT frame for 250 ms while BB was active. Controller force-safes and requires explicit re-enable. |
 | `OWN_CONFLICT` | Operator command rejected because BB is already in a state that forbids it (e.g. re-enable while not DISABLED). |
 | `MDOT_ADJ` | Mass-flow correction moved the setpoint. `detail` = `mdot=…,err=…,sp=…`. |
 | `MDOT_CLAMP` | Mass-flow nudge saturated at `sp_min`/`sp_max`. |
@@ -136,7 +137,7 @@ V2 owns the 16 PT channels. Every V2 loop iteration it sends its PT CSV row (`p<
 
 GC sees V2's PT data as `p…` on the primary link; it never sees the raw secondary link. Latency from V2 PT sample to GC `p…` row is one V1 loop iteration (typically well under a millisecond).
 
-If the secondary link drops, `v2PtData[]` and `v2PtPsiData[]` hold stale values. **This is a known limitation** — there is no staleness detector yet. If you need one, add a timestamp next to the PT arrays and have BB self-safe when it ages past a threshold. File this as a separate follow-up if it's needed for flight.
+If the secondary link drops or delivers an incomplete/non-numeric frame, it is not committed. After 250 ms without a complete frame, each active BB controller force-safes and emits `PT_STALE`. Valid data resuming does not restart control; the operator must explicitly issue `b<side>1` again.
 
 ## 5. Hardware channel map (set in `src/hardware-configs/BoardConfig.hpp`)
 
