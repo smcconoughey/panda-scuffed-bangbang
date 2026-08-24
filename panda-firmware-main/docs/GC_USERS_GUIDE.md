@@ -14,7 +14,7 @@ The V2↔V1 crossover is a direct TTL UART link (RS-485 transceiver bypassed; V2
 
 Every packet — command or telemetry — is a single line terminated by `\n` (or `\r`). Packets time out after 100 ms idle (`PACKET_IDLE_MS`) even if no newline is seen, so a dropped delimiter is recoverable.
 
-All PT data GC receives has been forwarded from Panda V2. V1 does not have its own PTs; it passes V2's `p…` CSV row through after parsing it into `v2PtData[]` for the bang-bang controllers to consume.
+All PT data GC receives has been forwarded from Panda V2. V1 does not have its own PTs; it passes V2's raw `p…` CSV row through as `v2PtData[]` and derives `v2PtPsiData[]` for the bang-bang controllers.
 
 ## 2. Command reference
 
@@ -65,19 +65,20 @@ If the vent channel is unset in `BoardConfig.hpp`, `v<side>1` and `x<side>` emit
 
 V1 emits five kinds of line on `Serial2`:
 
-### 3.1 DAQ rows (continuous)
+### 3.1 DAQ rows (20 Hz, best-effort)
 
-Order, every loop iteration:
+Order, every telemetry frame:
 
 ```
 t<f0>,t<f1>,...,t<f11>\n       # LC + TC voltages, NUM_LC_CHANNELS + NUM_TC_CHANNELS = 12
 s<f0>,s<f1>,...,s<f11>\n       # Solenoid current voltages, NUM_DC_CHANNELS = 12
 p<f0>,p<f1>,...,p<f15>\n       # PT voltages forwarded from V2, NUM_PT_CHANNELS = 16
+P<f0>,P<f1>,...,P<f15>\n       # PT pressures scaled to PSI on V1, NUM_PT_CHANNELS = 16
 ```
 
-All values are floats with 5 decimal places. The `p…` row is the passthrough of V2's PT scan — the identifier character is repeated once per value, matching V2's `CommsHandler::toCSVRow`.
+All values are floats with 5 decimal places. The `p…` row is the passthrough of V2's PT scan — the identifier character is repeated once per value, matching V2's `CommsHandler::toCSVRow`. Periodic frames are skipped if the UART lacks room so command handling and safety events never wait behind telemetry.
 
-### 3.2 Bang-bang heartbeat (every loop iteration, one per side)
+### 3.2 Bang-bang heartbeat (1 Hz, one per side)
 
 ```
 BB:<side>:<state>:<press01>:<vent01>:<pressure_psi>\n
@@ -129,19 +130,19 @@ This is the authoritative log for safety review. Categories:
 
 V2 owns the 16 PT channels. Every V2 loop iteration it sends its PT CSV row (`p<f>,p<f>,...`) to V1 on `Serial5`. V1:
 
-1. `parseV2PtPacket()` writes the 16 floats into `v2PtData[NUM_PT_CHANNELS]`.
-2. Bang-bang controllers read their configured index out of `v2PtData[]` on every `update()`.
+1. `parseV2PtPacket()` writes the 16 raw current values into `v2PtData[NUM_PT_CHANNELS]` and scales them into `v2PtPsiData[]`.
+2. Bang-bang controllers read their configured index out of `v2PtPsiData[]` on every `update()`.
 3. V1 re-encodes the full array into a `p…` CSV row and sends it on `Serial2` alongside its own DAQ.
 
 GC sees V2's PT data as `p…` on the primary link; it never sees the raw secondary link. Latency from V2 PT sample to GC `p…` row is one V1 loop iteration (typically well under a millisecond).
 
-If the secondary link drops, `v2PtData[]` holds stale values. **This is a known limitation** — there is no staleness detector yet. If you need one, add a timestamp next to `v2PtData[]` and have BB self-safe when it ages past a threshold. File this as a separate follow-up if it's needed for flight.
+If the secondary link drops, `v2PtData[]` and `v2PtPsiData[]` hold stale values. **This is a known limitation** — there is no staleness detector yet. If you need one, add a timestamp next to the PT arrays and have BB self-safe when it ages past a threshold. File this as a separate follow-up if it's needed for flight.
 
 ## 5. Hardware channel map (set in `src/hardware-configs/BoardConfig.hpp`)
 
 | Constant | Meaning | Current value |
 |---|---|---|
-| `BB_LOX_PT_CH` / `BB_FUEL_PT_CH` | Index into `v2PtData[]` for the primary press-line PT | 0, 1 |
+| `BB_LOX_PT_CH` / `BB_FUEL_PT_CH` | Index into `v2PtPsiData[]` for the primary press-line PT | 0, 1 |
 | `BB_LOX_DC_CH` / `BB_FUEL_DC_CH` | 1-indexed press-solenoid DC channel | 4, 7 |
 | `BB_LOX_VENT_DC_CH` / `BB_FUEL_VENT_DC_CH` | 1-indexed vent-solenoid DC channel | **UNSET** — you must set these before auto-vent / abort do anything. |
 | `BB_*_VENTURI_UP_PT` / `BB_*_VENTURI_DN_PT` | 0-indexed venturi taps for mass-flow correction | **UNSET** — mass-flow loop is a no-op until these are set. |

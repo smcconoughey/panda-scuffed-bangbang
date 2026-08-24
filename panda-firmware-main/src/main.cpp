@@ -66,9 +66,11 @@ static float v2PtPsiData[NUM_PT_CHANNELS] = {0};
 static bool gArmed = false;
 
 // ── Bang-bang controllers ────────────────────────────────────────────────
-BBController bbLox(v2PtData, BB_LOX_PT_CH, BB_LOX_DC_CH, BB_LOX_VENT_DC_CH,
+// BB configuration and safety limits are in PSI, so controllers must consume
+// the scaled view rather than the raw 4-20 mA telemetry values.
+BBController bbLox(v2PtPsiData, BB_LOX_PT_CH, BB_LOX_DC_CH, BB_LOX_VENT_DC_CH,
                    BB_LOX_VENTURI_UP_PT, BB_LOX_VENTURI_DN_PT, 'L');
-BBController bbFuel(v2PtData, BB_FUEL_PT_CH, BB_FUEL_DC_CH, BB_FUEL_VENT_DC_CH,
+BBController bbFuel(v2PtPsiData, BB_FUEL_PT_CH, BB_FUEL_DC_CH, BB_FUEL_VENT_DC_CH,
                     BB_FUEL_VENTURI_UP_PT, BB_FUEL_VENTURI_DN_PT, 'F');
 
 // ── BB → DC channel setter ───────────────────────────────────────────────
@@ -280,6 +282,29 @@ static void printBbHeartbeat(const BBController &c) {
   Serial2.print(c.isVentOpen() ? 1 : 0);
   Serial2.print(':');
   Serial2.println(c.lastPressure(), 1);
+}
+
+// Periodic telemetry is best-effort. Unlike command responses and BB events,
+// it must never block the main loop waiting for UART buffer space: doing that
+// can prevent us from reading the disable/disarm command which clears a live
+// control state. The cadence below leaves ample idle time on the RS-485 bus.
+static bool tryWriteTelemetryFrame(const char *lctcPacket,
+                                   const char *sPacket,
+                                   const char *ptPacket,
+                                   const char *ptPsiPacket) {
+  const size_t frameLen = strlen(lctcPacket) + strlen(sPacket) +
+                          strlen(ptPacket) + strlen(ptPsiPacket);
+  const int available = Serial2.availableForWrite();
+  if (available < 0 || static_cast<size_t>(available) <
+                           frameLen + TX_PRIORITY_RESERVE) {
+    return false;
+  }
+
+  Serial2.print(lctcPacket);
+  Serial2.print(sPacket);
+  Serial2.print(ptPacket);
+  Serial2.print(ptPsiPacket);
+  return true;
 }
 
 // Compact debug helper for validating UART framing bytes without flooding logs.
@@ -517,33 +542,50 @@ void loop() {
   sScanner.update();
   fScanner.update();
 
-  float sData[NUM_DC_CHANNELS] = {0},
-        lctcData[NUM_LC_CHANNELS + NUM_TC_CHANNELS];
-  sScanner.getSOutput(sData);
-  fScanner.getLCTCOutput(lctcData);
-
-  char sPacket[512], lctcPacket[512], ptPacket[512], ptPsiPacket[512];
-  th.toCSVRow(sData, S_IDENTIFIER, NUM_DC_CHANNELS, sPacket, 512, 5);
-  th.toCSVRow(lctcData, LCTC_IDENTIFIER, NUM_TC_CHANNELS + NUM_LC_CHANNELS,
-              lctcPacket, 512, 5);
-  th.toCSVRow(v2PtData, PT_IDENTIFIER, NUM_PT_CHANNELS, ptPacket, 512, 5);
-  th.toCSVRow(v2PtPsiData, PT_PSI_IDENTIFIER, NUM_PT_CHANNELS, ptPsiPacket, 512,
-              5);
-
+  static uint32_t lastTelemetryMs = 0;
+  static uint32_t lastHeartbeatMs = 0;
   static uint32_t lastHexDiagMs = 0;
   const uint32_t now = millis();
-  if (now - lastHexDiagMs >= 1000UL) {
-    printPacketHexBrief("LCTC", lctcPacket, sizeof(lctcPacket));
-    printPacketHexBrief("S", sPacket, sizeof(sPacket));
-    printPacketHexBrief("PT", ptPacket, sizeof(ptPacket));
-    lastHexDiagMs = now;
+
+  if (now - lastTelemetryMs >= TELEMETRY_INTERVAL_MS) {
+    // Advance the schedule even if this frame is dropped. Retrying immediately
+    // would recreate the same tight-loop TX starvation this guard prevents.
+    lastTelemetryMs = now;
+
+    float sData[NUM_DC_CHANNELS] = {0};
+    float lctcData[NUM_LC_CHANNELS + NUM_TC_CHANNELS] = {0};
+    sScanner.getSOutput(sData);
+    fScanner.getLCTCOutput(lctcData);
+
+    char sPacket[512], lctcPacket[512], ptPacket[512], ptPsiPacket[512];
+    th.toCSVRow(sData, S_IDENTIFIER, NUM_DC_CHANNELS, sPacket,
+                sizeof(sPacket), 5);
+    th.toCSVRow(lctcData, LCTC_IDENTIFIER,
+                NUM_TC_CHANNELS + NUM_LC_CHANNELS, lctcPacket,
+                sizeof(lctcPacket), 5);
+    th.toCSVRow(v2PtData, PT_IDENTIFIER, NUM_PT_CHANNELS, ptPacket,
+                sizeof(ptPacket), 5);
+    th.toCSVRow(v2PtPsiData, PT_PSI_IDENTIFIER, NUM_PT_CHANNELS, ptPsiPacket,
+                sizeof(ptPsiPacket), 5);
+
+    tryWriteTelemetryFrame(lctcPacket, sPacket, ptPacket, ptPsiPacket);
+
+    if (now - lastHexDiagMs >= 1000UL) {
+      printPacketHexBrief("LCTC", lctcPacket, sizeof(lctcPacket));
+      printPacketHexBrief("S", sPacket, sizeof(sPacket));
+      printPacketHexBrief("PT", ptPacket, sizeof(ptPacket));
+      lastHexDiagMs = now;
+    }
   }
 
-  Serial2.print(lctcPacket);
-  Serial2.print(sPacket);
-  Serial2.print(ptPacket);
-  Serial2.print(ptPsiPacket);
-
-  printBbHeartbeat(bbLox);
-  printBbHeartbeat(bbFuel);
+  if (now - lastHeartbeatMs >= BB_HEARTBEAT_INTERVAL_MS) {
+    lastHeartbeatMs = now;
+    // Heartbeats are small and infrequent. Only send them when they cannot
+    // consume the space reserved for control responses/events.
+    if (Serial2.availableForWrite() >=
+        static_cast<int>(TX_PRIORITY_RESERVE + 64)) {
+      printBbHeartbeat(bbLox);
+      printBbHeartbeat(bbFuel);
+    }
+  }
 }

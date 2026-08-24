@@ -31,6 +31,12 @@ static constexpr unsigned int SERIAL_TIMEOUT = 2000;
 static constexpr unsigned int PACKET_IDLE_MS = 100;
 static constexpr unsigned int PULSE_DURATION = 500;
 static constexpr size_t RX_BUF_SIZE = 256;
+// Keep the half-duplex command bus idle most of the time. Periodic telemetry
+// must never continuously refill the UART TX buffer or GC cannot get a command
+// (most importantly a disable/disarm) onto the wire.
+static constexpr uint32_t TELEMETRY_INTERVAL_MS = 50;       // 20 Hz
+static constexpr uint32_t BB_HEARTBEAT_INTERVAL_MS = 1000;  // 1 Hz
+static constexpr size_t TX_PRIORITY_RESERVE = 256;
 
 static constexpr uint8_t NUM_MAX_COMMANDS = 32;
 static constexpr uint8_t DATA_DECIMALS = 6; // Number of decimal places in telemetry data
